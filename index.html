@@ -818,6 +818,25 @@
             return true;
         }
 
+        // Borrador abierto desde Historial (null = coaching nuevo)
+        let editingIndex = null;
+        // Evita que imágenes de un borrador anterior se dibujen tarde
+        let _viewToken = 0;
+
+        function drawSavedSignature(canvasId, dataUrl, token) {
+            const canvas = document.getElementById(canvasId);
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if (!dataUrl) return;
+            const img = new Image();
+            img.onload = () => {
+                if (token !== _viewToken) return;
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0);
+            };
+            img.src = dataUrl;
+        }
+
         function saveCoaching() {
             console.log('Iniciando guardado...');
 
@@ -860,7 +879,11 @@
 
                 // Guardar en localStorage
                 let history = JSON.parse(localStorage.getItem('coachingHistory') || '[]');
-                history.push(coaching);
+                if (editingIndex !== null && history[editingIndex]) {
+                    history[editingIndex] = coaching;
+                } else {
+                    history.push(coaching);
+                }
                 localStorage.setItem('coachingHistory', JSON.stringify(history));
 
                 console.log('Datos guardados en localStorage');
@@ -894,6 +917,8 @@
             clearSignature('signatureAgent');
             clearSignature('signatureAnalyst');
             clearSignature('signatureSupervisor');
+            editingIndex = null;
+            _viewToken++;
             document.getElementById('sessionType').value = 'Individual';
             document.getElementById('participantsList').innerHTML = '';
             toggleSessionType();
@@ -952,6 +977,8 @@
             let history = JSON.parse(localStorage.getItem('coachingHistory') || '[]');
             history.splice(index, 1);
             localStorage.setItem('coachingHistory', JSON.stringify(history));
+            if (editingIndex === index) editingIndex = null;
+            else if (editingIndex !== null && editingIndex > index) editingIndex--;
             loadHistory();
             showAlert('✓ Registro eliminado', 'success');
         }
@@ -1291,6 +1318,9 @@
         function viewCoaching(index) {
             const history = JSON.parse(localStorage.getItem('coachingHistory') || '[]');
             const item = history[index];
+            if (!item) return;
+            editingIndex = index;
+            const token = ++_viewToken;
 
             // Restaurar tipo de sesión y participantes
             document.getElementById('sessionType').value = item.sessionType || 'Individual';
@@ -1302,7 +1332,7 @@
                     if (p.signature) {
                         const pc = document.getElementById(pid);
                         const pimg = new Image();
-                        pimg.onload = () => pc.getContext('2d').drawImage(pimg, 0, 0);
+                        pimg.onload = () => { if (token === _viewToken) pc.getContext('2d').drawImage(pimg, 0, 0); };
                         pimg.src = p.signature;
                     }
                 });
@@ -1322,21 +1352,10 @@
             document.getElementById('commitmentWhy').value = item.commitmentWhy || '';
             document.getElementById('commitmentWhen').value = item.commitmentWhen || '';
 
-            // Mostrar firmas
-            const ctxAgent = document.getElementById('signatureAgent').getContext('2d');
-            const imgAgent = new Image();
-            imgAgent.onload = () => ctxAgent.drawImage(imgAgent, 0, 0);
-            imgAgent.src = item.signatureAgent;
-
-            const ctxAnalyst = document.getElementById('signatureAnalyst').getContext('2d');
-            const imgAnalyst = new Image();
-            imgAnalyst.onload = () => ctxAnalyst.drawImage(imgAnalyst, 0, 0);
-            imgAnalyst.src = item.signatureAnalyst;
-
-            const ctxSupervisor = document.getElementById('signatureSupervisor').getContext('2d');
-            const imgSupervisor = new Image();
-            imgSupervisor.onload = () => ctxSupervisor.drawImage(imgSupervisor, 0, 0);
-            imgSupervisor.src = item.signatureSupervisor;
+            // Mostrar firmas (limpiando antes cada recuadro)
+            drawSavedSignature('signatureAgent', item.sessionType === 'Grupal' ? '' : item.signatureAgent, token);
+            drawSavedSignature('signatureAnalyst', item.signatureAnalyst, token);
+            drawSavedSignature('signatureSupervisor', item.signatureSupervisor, token);
 
             // Cambiar a pestaña de formulario
             switchTab('form');
